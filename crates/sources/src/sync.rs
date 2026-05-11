@@ -595,7 +595,7 @@ fn write_gitlab_meta(m: &GitlabMeta<'_>) -> Result<(), SkillfileError> {
 }
 
 /// Fetch content, write it to disk, and record `.meta` for a GitLab entry.
-fn fetch_store_gitlab(op: &StoreOp<'_>) -> Result<String, SkillfileError> {
+fn fetch_store_gitlab(op: &StoreOp<'_>, host: &str) -> Result<String, SkillfileError> {
     let StoreOp {
         client,
         entry,
@@ -611,12 +611,11 @@ fn fetch_store_gitlab(op: &StoreOp<'_>) -> Result<String, SkillfileError> {
     else {
         unreachable!()
     };
-    let host = crate::http::gitlab_host();
     let gl = GitlabRef {
         owner_repo,
         path_in_repo,
         sha,
-        host: &host,
+        host,
     };
     let fetch_op = GitlabFetchOp {
         client: *client,
@@ -632,16 +631,18 @@ fn fetch_store_gitlab(op: &StoreOp<'_>) -> Result<String, SkillfileError> {
         ref_,
         sha,
         raw_url: &raw_url,
-        host: &host,
+        host,
     })?;
     Ok(raw_url)
 }
 
 /// Resolve the SHA for a GitLab entry, returning `None` in dry-run mode.
+#[allow(clippy::too_many_arguments)]
 fn resolve_gitlab_sha_for_entry(
     client: &dyn HttpClient,
     q: &ShaLookup<'_>,
     params: &SyncParams<'_>,
+    host: &str,
 ) -> Result<Option<String>, SkillfileError> {
     if let Some(ls) = q.locked_sha {
         progress!(
@@ -667,8 +668,7 @@ fn resolve_gitlab_sha_for_entry(
         return Ok(None);
     }
 
-    let host = crate::http::gitlab_host();
-    let sha = resolve_gitlab_sha(client, q.owner_repo, q.ref_, &host)?;
+    let sha = resolve_gitlab_sha(client, q.owner_repo, q.ref_, host)?;
     Ok(Some(sha))
 }
 
@@ -688,6 +688,7 @@ fn sync_gitlab_core(
     else {
         unreachable!()
     };
+    let host = crate::http::gitlab_host();
     let locked_sha = if params.update {
         None
     } else {
@@ -710,7 +711,7 @@ fn sync_gitlab_core(
         label: &label,
         locked_sha: locked_sha.as_deref(),
     };
-    let Some(sha) = resolve_gitlab_sha_for_entry(client, &q, params)? else {
+    let Some(sha) = resolve_gitlab_sha_for_entry(client, &q, params, &host)? else {
         return Ok(None); // dry-run
     };
 
@@ -731,7 +732,7 @@ fn sync_gitlab_core(
         vdir: &vdir,
         label: &label,
         sha: &sha,
-    })?;
+    }, &host)?;
     Ok(Some((key, LockEntry { sha, raw_url })))
 }
 
